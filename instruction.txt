@@ -1,0 +1,102 @@
+For this workshop. We will install docker-compose tool on your docker-machine (labdocker) and demonstration fluentd (Need Memory about 4 GB)
+
+=================
+Install docker-compose
+=================
+
+1. Get docker-compose from curl to /home/docker with command:
+	curl -L https://github.com/docker/compose/releases/download/1.18.0/docker-compose-`uname -s`-`uname -m` -o /home/docker/docker-compose
+
+
+2. Copy docker-compose to /usr/local/bin/docker-compose with command:
+
+	sudo cp /home/docker/docker-compose /usr/local/bin/docker-compose
+
+3. Change mode for allow execute with command: "sudo chmod +x /usr/local/bin/docker-compose"
+
+4. Check docker-compose readyness by command: "docker-compose --version"
+
+
+==================
+Prepare Fluentd image 
+==================
+1. Create folder structure for fluentd image:
+    mkdir ./Module_Log
+    mkdir ./Module_Log/fluentd
+    mkdir ./Module_Log/fluentd/conf
+
+2. Copy docker-compose to ./Module_Log
+    scp ./Module_Log/docker-compose.yml <username>@<server address>:/<your path>/Module_log
+
+3. Copy Dockerfile to ./Module_log/fluentd and fluent.conf to ./Module_Log/fluentd/conf
+    scp ./Module_Log/fluentd/Dockerfile <username>@<server address>:/<your path>/Module_Log/fluentd
+    scp ./Module_Log/fluentd/conf/fluent.conf <username>@<server address>:/<your path>/Module_Log/fluentd/conf
+
+4. Start all container by compose command:
+    docker-compose up -d
+
+5. Run another container for send log by command:
+    docker run -dt --name nodejs -p 3000:3000 \
+     --log-driver=fluentd --log-opt fluentd-address=localhost:24224 \
+     --log-opt tag="{{.DaemonName}}-{{.ImageName}}-{{.Name}}-{{.ID}}" \
+     labdocker/alpineweb:fluentd_log node hello.js
+
+    docker run -dt --name python -p 5000:5000 \
+     --log-driver=fluentd --log-opt fluentd-address=localhost:24224 \
+     --log-opt tag="{{.DaemonName}}-{{.ImageName}}-{{.Name}}-{{.ID}}" \
+     labdocker/cluster:webservicelite
+
+    docker run -dt --name nginx -p 8080:80 \
+     --log-driver=fluentd --log-opt fluentd-address=localhost:24224 \
+     --log-opt tag="{{.DaemonName}}-{{.ImageName}}-{{.Name}}-{{.ID}}" \
+     labdocker/nginx:fluentd_log
+
+    docker run -dt --name apache -p 8090:80 \
+     --log-driver=fluentd --log-opt fluentd-address=localhost:24224 \
+     --log-opt tag="{{.DaemonName}}-{{.ImageName}}-{{.Name}}-{{.ID}}" \
+     httpd
+
+6. Test open kibana for url http://x.x.x.x:5601
+
+8. Configure kibana by menu:
+    Menu: Management    ==> fluentd-* and Apply
+
+
+     ===============Configure NGINX======================
+
+    docker run -dt --name nodejs -p 3000:3000 \
+     labdocker/alpineweb:fluentd_log node hello.js
+
+     ====================================================
+
+     ===============Configure NODEJS======================
+     Require component:
+     npm install access-log
+
+     Require code:
+     var http = require('http');
+    var accesslog = require('access-log');
+ 
+    http.createServer(function(req, res) {
+    accesslog(req, res);        ===============> This line
+    res.end();
+    }).listen(80, '0.0.0.0');
+    ======================================================
+
+    ================Configure NGINX=======================
+    RUN ln -sf /dev/stdout /var/log/nginx/access.log && ln -sf /dev/stderr /var/log/nginx/error.log
+
+    Dockerfile:
+
+    FROM labdocker/alpine:latest 
+    MAINTAINER Praparn Lueangphoonlap (eva10409@gmail.com) 
+    LABEL Description="NodeJS/NGINX Build Container" Version="1.0"
+    ENV NODE_VERSION=v4.3.0 NPM_VERSION=2.14.12
+    RUN apk update && \
+        apk add nginx
+    COPY nginx.conf /etc/nginx/nginx.conf
+    WORKDIR /usr/sbin
+    RUN ln -sf /dev/stdout /var/log/nginx/access.log && ln -sf /dev/stderr /var/log/nginx/error.log
+    ENTRYPOINT ["nginx","-c","/etc/nginx/nginx.conf"]
+    EXPOSE 8080
+    ======================================================
